@@ -1,0 +1,74 @@
+SPARK COMMANDS
+
+docker run -it --name zeppelin -p 8080:8080 -v /run/desktop/mnt/host/c/Users/Dilshani/football/files:/data apache/zeppelin:0.9.0
+
+
+%pyspark
+df2 = spark.read.options(sep=";", header=True).csv("/data/results.csv")
+df2.printSchema()
+df2.show() 
+
+
+
+%pyspark
+
+# Specify schema for your csv file
+from pyspark.sql.types import StructType, StringType, IntegerType,DateType,BooleanType
+
+schema = StructType().add("date", DateType(), True) \
+    .add("home_team", StringType(), True) \
+    .add("away_team", StringType(), True)\
+    .add("home_score", IntegerType(), True)\
+    .add("away_score", IntegerType(), True)\
+    .add("tournament", StringType(), True)\
+    .add("city", StringType(), True)\
+    .add("country", StringType(), True)\
+    .add("neutral", BooleanType(), True)
+    
+    
+df3 = spark.read.options(sep=",", header=True) \
+    .schema(schema) \
+    .csv("/data/football.csv") 
+df3.printSchema()
+df3.show()
+
+
+%pyspark
+# call createOrReplaceTempView first if you want to query this DataFrame via sql
+df3.createOrReplaceTempView("match_scores")
+# SparkSession.sql return DataFrame
+df2 = spark.sql("select country,COUNT(country) goal_count from scores group by country having COUNT(country)>1")
+df2.show()
+
+%spark.sql
+select (COUNT(distinct A.country))/((SELECT COUNT(distinct country) FROM
+match_scores)) percentage
+from
+(
+select country , tournament, COUNT(*) matches from match_scores
+group by country , tournament
+having COUNT(*)>1
+) A
+
+
+%spark.sql
+select YEAR(date) Year , COUNT(*) matches
+from match_scores
+where date IS NOT NULL
+group by YEAR(date)
+order by YEAR(date)
+
+%spark.sql
+SELECT A.Team as TeamName, 
+sum (CASE WHEN A.Team=A.Result then 1 else 0 end )as Won
+ ,sum(CASE WHEN A.Team!=A.Result AND A.Team!='drawn'  then 1 else 0 end )as Lost
+ , sum(CASE WHEN A.Result='drawn' then 1 else 0 end )as Drawn
+FROM (SELECT home_team as Team,
+      CASE WHEN home_score = away_score THEN 'drawn' WHEN  home_score >away_score  THEN home_team  ELSE away_team END Result
+      FROM match_scores
+      UNION ALL
+      SELECT away_team as Team,
+      CASE WHEN home_score = away_score THEN 'drawn' WHEN  home_score >away_score  THEN home_team  ELSE away_team END Result
+      FROM match_scores
+     ) A
+GROUP BY A.Team
